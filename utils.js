@@ -133,6 +133,9 @@ async function convertSteemDec(desired_quantity) {
 
 async function getDecBalance() {
 	let balances = await request(`${config.sm_api_url}/players/balances?username=${config.account}`).catch(err => log(`Error loading DEC balances from SM API! Error: ${err}`, 1, 'Red'));
+
+	balances = tryParse(balances);
+
 	let dec_balance = balances.find(b => b.token == 'DEC');
 	return dec_balance ? dec_balance.balance : 0;
 }
@@ -146,6 +149,35 @@ function tryParse(json) {
 	}
 }
 
+async function checkSETransaction(trx_id, retries) {
+	if(!retries)
+		retries = 0;
+
+	return await ssc.getTransactionInfo(trx_id).then(async result => {
+		if(result) {
+			var error = null;
+
+			if(result.logs) {
+				var logs = JSON.parse(result.logs);
+
+				if(logs.errors && logs.errors.length > 0)
+					error = logs.errors[0];
+			}
+
+			return Object.assign(result, { error: error, success: !error });
+		} else if(retries < 6) {
+			await timeout(5000);
+			return await checkSETransaction(trx_id, retries + 1);
+		} else
+			return { success: false, error: 'Transaction not found.' };
+	});
+}
+
+async function getSETokenBalance(symbol) {
+	let balance = ssc.findOne('tokens', 'balances', { symbol: symbol, account: config.account });
+	return balance ? parseFloat(balance.balance) : 0;
+}
+
 module.exports = {
 	log,
 	timeout,
@@ -155,6 +187,8 @@ module.exports = {
 	convertSteemDec,
 	getCurrency,
 	getDecBalance,
+	checkSETransaction,
+	getSETokenBalance,
 	decPrice: () => dec_price,
 	steemPrice: () => steem_price,
 	sbdPrice: () => sbd_price

@@ -80,6 +80,22 @@ function updateClientErrors(client) {
 	}
 }
 
+let json_queue = [];
+check_json_queue();
+
+async function queue_custom_json(id, json, use_active) {
+	return new Promise(resolve => json_queue.push({ id, json, use_active, resolve }));
+}
+
+async function check_json_queue() {
+	while(json_queue.length > 0) {
+		let op = json_queue.shift();
+		op.resolve(await custom_json(op.id, op.json, op.use_active));
+	}
+
+	setTimeout(check_json_queue, 3000);
+}
+
 async function custom_json(id, json, use_active, retries) {
 	if(!retries)
 		retries = 0;
@@ -91,18 +107,33 @@ async function custom_json(id, json, use_active, retries) {
 		required_posting_auths: use_active ? [] : [config.account]
 	}
 
-	return await get_client().broadcast.json(data, dsteem.PrivateKey.fromString(use_active ? config.active_key : config.posting_key)).catch(async err => {
-		log(`Error broadcasting custom_json [${id}]. Error: ${err}`, 2, 'Yellow');
+	return await get_client().broadcast.json(data, dsteem.PrivateKey.fromString(use_active ? config.active_key : config.posting_key))
+		.then(r => {
+			utils.log(`Custom JSON [${id}] broadcast successfully.`);
+			return r;
+		})
+		.catch(async err => {
+			log(`Error broadcasting custom_json [${id}]. Error: ${err}`, 2, 'Yellow');
 
-		if(retries < 3)
-			return await custom_json(id, json, use_active, retries + 1);
-		else
-			log(`Broadcasting custom_json [${id}] failed! Error: ${err}`, 1, 'Red');
-	});
+			if(retries < 3)
+				return await custom_json(id, json, use_active, retries + 1);
+			else
+				log(`Broadcasting custom_json [${id}] failed! Error: ${err}`, 1, 'Red');
+		});
+}
+
+async function transfer(to, amount, memo) {
+	return await get_client().broadcast.transfer({ to, from: config.account, amount, memo}, dsteem.PrivateKey.fromString(config.active_key))
+		.then(r => {
+			utils.log(`Transfer of ${amount} sent to @${to}.`);
+			return r;
+		})
+		.catch(err => utils.log(`Error sending transfer of ${amount} to @${to}. Error: ${err}`));
 }
 
 module.exports = {
 	database,
 	broadcast,
-	custom_json
+	queue_custom_json,
+	transfer
 }

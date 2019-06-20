@@ -78,39 +78,129 @@ async function processBlock(block_num) {
 async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_time) {
 	// Process the operation
 	if(op[0] == 'transfer' && op[1].to == config.account) {
-		utils.log("Incoming Payment! From: " + op[1].from + ", Amount: " + op[1].amount + ", memo: " + op[1].memo);
+		try {
+			utils.log("Incoming Payment! From: " + op[1].from + ", Amount: " + op[1].amount + ", memo: " + op[1].memo);
 
-		var data = utils.tryParse(op[1].memo);
+			var data = utils.tryParse(op[1].memo);
 
-		if(!data || data.method != 'buy' || data.symbol != 'DEC')
-			return;	// Optionally refund the payment here
+			if(!data || data.method != 'buy' || data.symbol != 'DEC')
+				return;	// Optionally refund the payment here
 
-		let to = data.to ? data.to : op[1].from;
-		let amount = parseFloat(op[1].amount);
-		let currency = tils.getCurrency(op[1].amount);
+			let to = data.to ? data.to : op[1].from;
+			let amount = parseFloat(op[1].amount);
+			let currency = utils.getCurrency(op[1].amount);
 
-		if(currency == 'SBD')
-			return; // Optionally refund the payment here
+			if(currency == 'SBD')
+				return; // Optionally refund the payment here
 
-		let conversion = await utils.convertSteemDec(amount);
+			let conversion = await utils.convertSteemDec(amount);
 
-		if(conversion.steem < amount) {
-			// TODO: Not enough DEC available for sale, refund remaining STEEM
+			if(conversion.steem < amount) {
+				// TODO: Not enough DEC available for sale, refund remaining STEEM
+			}
+
+			let dec_amount_net_fee = +(conversion.dec * (1 - config.fee_pct / 10000)).toFixed(3);
+
+			let dec_balance = await utils.getDecBalance();
+
+			utils.log(`DEC Balance: ${dec_balance}`);
+
+			if(dec_balance < dec_amount_net_fee) {
+				// TODO: Insufficient balance, refund payment
+				return;
+			}
+
+			// Transfer the DEC minus the conversion fee
+			steem_interface.queue_custom_json('sm_token_transfer', { to: to, qty: dec_amount_net_fee, token: 'DEC' });
+
+			// Deposit STEEM to Steem Engine, buy DEC, and withdraw it back to the game
+			marketBuy(amount, dec_amount_net_fee);
+		} catch(err) {
+			console.log(err);
 		}
+	}
+}
 
-		let amount_net_fee = +(amount * (1 - config.fee_pct / 10000)).toFixed(3);
+async function marketBuy(steem_amount, dec_amount) {
+	try {
+		// Deposit STEEM to Steem Engine
+		let deposit = await steem_interface.transfer(
+			config.ssc.steemp_account, 
+			`${steem_amount.toFixed(3)} STEEM`, 
+			`{"id":"${config.ssc.chain_id}","json":{"contractName":"steempegged","contractAction":"buy","contractPayload":{}}}`
+		);
 
-		let dec_balance = await utils.getDecBalance();
-
-		if(dec_balance < amount_net_fee) {
-			// TODO: Insufficient balance, refund payment
+		if(!deposit || !deposit.id) {
+			utils.log(`Deposit of [${steem_amount} STEEM] failed!`, 1, 'Red');
 			return;
 		}
 
-		// Transfer the DEC minus the conversion fee
-		steem_interface.custom_json('sm_token_transfer', { to: to, qty: amount_net_fee, token: 'DEC' });
+		// Make sure the transaction went through
+		let deposit_result = await utils.checkSETransaction(deposit.id);
 
-		// TODO: Deposit STEEM to Steem Engine, buy DEC, and withdraw it back to the game
+		if(!deposit_result || !deposit_result.success) {
+			utils.log(`Deposit of [${steem_amount} STEEM] failed! Error: ${deposit_result.error}`, 1, 'Red');
+			return;
+		}
+
+		let deposit_logs = utils.tryParse(deposit_result.logs);
+		let deposit_amount = parseFloat(deposit_logs.events[0].data.quantity);
+
+		let purchase_price = (deposit_amount / dec_amount).toFixed(5);
+
+		// Place the market buy order
+		let market_buy = await steem_interface.queue_custom_json(config.ssc.chain_id, {
+			"contractName":"market",
+			"contractAction":"buy",
+			"contractPayload": {
+				"symbol": "DEC",
+				"quantity": dec_amount.toFixed(3),
+				"price": purchase_price
+			}
+		}, true);
+
+		if(!market_buy || !market_buy.id) {
+			utils.log(`Market buy of [${dec_amount} DEC] failed!`, 1, 'Red');
+			return;
+		}
+
+		// Make sure the transaction went through
+		let market_result = await utils.checkSETransaction(market_buy.id);
+
+		if(!market_result || !market_result.success) {
+			utils.log(`Market buy of [${dec_amount} DEC] failed! Error: ${market_result.error}`, 1, 'Red');
+			return;
+		}
+
+		// Find the amount of DEC received from the market
+		let market_logs = utils.tryParse(market_result.logs);
+		let dec = market_logs.events.filter(e => e.data.to == config.account).reduce((t, v) => t + parseFloat(v.data.quantity), 0);
+
+		// Finally, transfer the DEC back to the game account
+		let dec_transfer = await steem_interface.queue_custom_json(config.ssc.chain_id, {
+			"contractName":"tokens",
+			"contractAction":"transfer",
+			"contractPayload": {
+				"symbol": "DEC",
+				"quantity": dec.toFixed(3),
+				"to": config.sm_account
+			}
+		}, true);
+
+		if(!dec_transfer || !dec_transfer.id) {
+			utils.log(`Transfer of [${dec} DEC] to @${config.sm_account} failed!`, 1, 'Red');
+			return;
+		}
+		
+		// Make sure the transaction went through
+		let dec_transfer_result = await utils.checkSETransaction(dec_transfer.id);
+
+		if(!dec_transfer_result || !dec_transfer_result.success) {
+			utils.log(`Transfer of [${dec_amount} DEC] to @${config.sm_account} failed! Error: ${dec_transfer_result.error}`, 1, 'Red');
+			return;
+		}
+	} catch(err) {
+		console.log(err);
 	}
 }
 
