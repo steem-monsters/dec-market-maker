@@ -2,6 +2,8 @@ const fs = require("fs");
 const utils = require('./utils');
 const config = require('./config');
 var steem_interface = require('./steem-interface');
+var express = require('express');
+var app = express();
 
 let last_block = 0;
 
@@ -20,8 +22,39 @@ async function start() {
 
 	await utils.loadPrices();
 
+	app.use(function(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+		res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, X-CSRF-Token, Content-Type, Accept");
+		res.header("X-Frame-Options", "sameorigin")
+    next();
+  });
+
+  app.listen(config.api_port, () => utils.log('API running on port: ' + config.api_port));
+
 	getNextBlock();
 }
+
+app.get('/conversion_rate', async (req, res) => {
+	let steem = parseFloat(req.query.steem);
+	let dec = parseFloat(req.query.dec);
+
+	if((!steem || isNaN(steem)) && (!dec || isNaN(dec))) {
+		res.json({ error: 'Must specify a valid STEEM or DEC amount to convert.' });
+		return;
+	}
+
+	if(steem) {
+		dec = (await utils.convertSteemDec(steem)).dec;
+		res.json({ steem: steem, dec: +(dec * (1 - config.fee_pct / 10000)).toFixed(3) });
+		return;
+	}
+
+	if(dec) {
+		steem = (await utils.convertDecSteem(dec)).steem;
+		res.json({ steem: +(steem * (1 + config.fee_pct / 10000)).toFixed(3), dec: dec });
+		return;
+	}
+});
 
 async function getNextBlock() {
 	var result = await steem_interface.database('get_dynamic_global_properties');
