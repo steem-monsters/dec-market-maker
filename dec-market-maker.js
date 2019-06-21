@@ -129,7 +129,8 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			let conversion = await utils.convertSteemDec(amount);
 
 			if(conversion.steem < amount) {
-				// TODO: Not enough DEC available for sale, refund remaining STEEM
+				// Not enough DEC available for sale, refund remaining STEEM
+				await steem_interface.transfer(op[1].from, `${(amount - conversion.steem).toFixed(3)} STEEM`, `Not enough DEC available for purchase. Refunding remaining STEEM.`);
 			}
 
 			let dec_amount_net_fee = +(conversion.dec * (1 - config.fee_pct / 10000)).toFixed(3);
@@ -139,7 +140,9 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			utils.log(`DEC Balance: ${dec_balance}`);
 
 			if(dec_balance < dec_amount_net_fee) {
-				// TODO: Insufficient balance, refund payment
+				// Insufficient balance, refund payment
+				utils.log(`Insufficient DEC balance [${dec_balance}]!`, 1, 'Red');
+				await steem_interface.transfer(op[1].from, op[1].amount, `Insufficient DEC balance. Refunding payment.`);
 				return;
 			}
 
