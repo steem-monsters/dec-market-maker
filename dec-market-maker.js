@@ -22,17 +22,17 @@ async function start() {
 
 	await utils.loadPrices();
 
-	app.use(function(req, res, next) {
-    res.header("Access-Control-Allow-Origin", "*");
-		res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, X-CSRF-Token, Content-Type, Accept");
-		res.header("X-Frame-Options", "sameorigin")
-    next();
-  });
-
-  app.listen(config.api_port, () => utils.log('API running on port: ' + config.api_port));
-
 	getNextBlock();
 }
+
+app.use(function(req, res, next) {
+	res.header("Access-Control-Allow-Origin", "*");
+	res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, X-CSRF-Token, Content-Type, Accept");
+	res.header("X-Frame-Options", "sameorigin")
+	next();
+});
+
+app.listen(config.api_port, () => utils.log('API running on port: ' + config.api_port));
 
 app.get('/conversion_rate', async (req, res) => {
 	let steem = parseFloat(req.query.steem);
