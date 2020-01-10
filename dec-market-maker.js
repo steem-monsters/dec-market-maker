@@ -119,7 +119,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			if(!data || data.method != 'buy' || data.symbol != 'DEC')
 				return;	// Optionally refund the payment here
 
-			let to = data.to ? data.to : op[1].from;
+			let to = data.to ? data.to : (data.id ? data.id : op[1].from);
 			let amount = parseFloat(op[1].amount);
 			let currency = utils.getCurrency(op[1].amount);
 
