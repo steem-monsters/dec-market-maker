@@ -114,7 +114,16 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 		try {
 			utils.log("Incoming Payment! From: " + op[1].from + ", Amount: " + op[1].amount + ", memo: " + op[1].memo);
 
-			var data = utils.tryParse(op[1].memo);
+			let data = null;
+
+			if(op[1].memo.startsWith('{'))
+				data = utils.tryParse(op[1].memo);
+			else {
+				if(op[1].memo[op[1].memo.length - 1] != '=')
+					op[1].memo = op[1].memo + '='
+					
+				data = utils.tryParse(new Buffer(op[1].memo, 'base64').toString('ascii'))
+			}
 
 			if(!data || data.method != 'buy' || data.symbol != 'DEC')
 				return;	// Optionally refund the payment here
