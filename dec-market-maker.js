@@ -44,13 +44,13 @@ app.get('/conversion_rate', async (req, res) => {
 	}
 
 	if(steem) {
-		dec = (await utils.convertSteemDec(steem)).dec;
+		dec = (await utils.convertFromSteem('DEC', steem)).dec;
 		res.json({ steem: steem, dec: +(dec * (1 - config.fee_pct / 10000)).toFixed(3) });
 		return;
 	}
 
 	if(dec) {
-		steem = (await utils.convertDecSteem(dec)).steem;
+		steem = (await utils.convertToSteem('DEC', dec)).steem;
 		res.json({ steem: +(steem * (1 + config.fee_pct / 10000)).toFixed(3), dec: dec });
 		return;
 	}
