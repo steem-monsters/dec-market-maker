@@ -135,7 +135,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			if(currency == 'SBD')
 				return; // Optionally refund the payment here
 
-			let conversion = await utils.convertSteemDec(amount);
+			let conversion = await utils.convertFromSteem('DEC', amount);
 
 			if(conversion.steem < amount) {
 				// Not enough DEC available for sale, refund remaining STEEM
