@@ -99,10 +99,10 @@ async function getSellBook(token) {
 
 	if(!sell_book.date_loaded || sell_book.date_loaded < Date.now() - 60 * 1000) {
 		sell_book.date_loaded = Date.now();
-		sell_book.orders = await ssc.find('market', 'sellBook', { symbol: token }, 200, 0, [{ index: 'price', descending: false }], false);
+		sell_book.orders = await ssc.find('market', 'sellBook', { symbol: token }, 200, 0, [{ index: 'priceDec', descending: false }], false);
 	}
 
-	return sell_book;
+	return sell_book.orders;
 }
 
 async function convertToSteem(token, desired_quantity) {

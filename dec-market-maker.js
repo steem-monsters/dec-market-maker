@@ -21,7 +21,6 @@ async function start() {
 	}
 
 	await utils.loadPrices();
-
 	getNextBlock();
 }
 
