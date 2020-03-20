@@ -62,23 +62,24 @@ async function loadDecPrice() {
 }
 
 async function loadSteemPrice() {
-	let btc_data = await request('https://api.coinmarketcap.com/v1/ticker/bitcoin/').catch(err => log(`Error loading BTC price from CMC! Error: ${err}`, 1, 'Red'));
+	let btc_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=USD-BTC').catch(err => log(`Error loading BTC price from Bittrex! Error: ${err}`, 1, 'Red'));
 	let steem_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=BTC-STEEM').catch(err => log(`Error loading STEEM price from Bittrex! Error: ${err}`, 1, 'Red'));
 	let sbd_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=BTC-SBD').catch(err => log(`Error loading SBD price from Bittrex! Error: ${err}`, 1, 'Red'));
 
 	btc_data = tryParse(btc_data);
 
 	if(!btc_data) {
-		log('Error parsing BTC price from CMC!', 1, 'Red');
+		log('Error parsing BTC price from Bittrex!', 1, 'Red');
 		return;
 	}
 
+	btc_price = btc_data.result.Bid;
 	steem_data = tryParse(steem_data);
 	
 	if(!steem_data)
 		log('Error parsing STEEM price from Bittrex!', 1, 'Red');
 	else {
-		steem_price = parseFloat(btc_data[0].price_usd) * parseFloat(steem_data.result.Bid);
+		steem_price = parseFloat(btc_price) * parseFloat(steem_data.result.Bid);
 		log(`Loaded STEEM Price: $${steem_price.toFixed(5)}`);
 	}
 
@@ -87,48 +88,55 @@ async function loadSteemPrice() {
 	if(!sbd_data)
 		log('Error parsing SBD price from Bittrex!', 1, 'Red');
 	else {
-		sbd_price = parseFloat(btc_data[0].price_usd) * parseFloat(sbd_data.result.Bid);
+		sbd_price = parseFloat(btc_price) * parseFloat(sbd_data.result.Bid);
 		log(`Loaded SBD Price: $${sbd_price.toFixed(5)}`);
 	}
 }
 
-let sell_book = [];
-let sell_book_loaded = null;
-async function getSellBook() {
-	if(!sell_book_loaded || sell_book_loaded < Date.now() - 60 * 1000) {
-		sell_book_loaded = Date.now();
-		sell_book = await ssc.find('market', 'sellBook', { symbol: 'DEC' }, 200, 0, [{ index: 'price', descending: false }], false);
+let sell_books = {};
+async function getSellBook(token) {
+	let sell_book = sell_books[token] || {};
+
+	if(!sell_book.date_loaded || sell_book.date_loaded < Date.now() - 60 * 1000) {
+		sell_book.date_loaded = Date.now();
+		sell_bookd.orders = await ssc.find('market', 'sellBook', { symbol: token }, 200, 0, [{ index: 'price', descending: false }], false);
 	}
 
 	return sell_book;
 }
 
-async function convertDecSteem(desired_quantity) {
-	let dec = 0, steem = 0, index = -1;
-	let sell_orders = await getSellBook();
+async function convertToSteem(token, desired_quantity) {
+	let token_amount = 0, steem = 0, index = -1;
+	let sell_orders = await getSellBook(token);
 
-	while(dec < desired_quantity && ++index < sell_orders.length) {
+	while(token_amount < desired_quantity && ++index < sell_orders.length) {
 		let order = sell_orders[index];
-		let qty = Math.min(desired_quantity - dec, parseFloat(order.quantity));
+		let qty = Math.min(desired_quantity - token_amount, parseFloat(order.quantity));
 		steem += qty * parseFloat(order.price);
-		dec += qty;
+		token_amount += qty;
 	}
 
-	return { dec: +dec.toFixed(3), steem: +steem.toFixed(3) };
+	let ret_val = { steem: +steem.toFixed(3) };
+	ret_val[token] = +token_amount.toFixed(3);
+
+	return ret_val;
 }
 
-async function convertSteemDec(desired_quantity) {
-	let dec = 0, steem = 0, index = -1;
-	let sell_orders = await getSellBook();
+async function convertFromSteem(token, desired_quantity) {
+	let token_amount = 0, steem = 0, index = -1;
+	let sell_orders = await getSellBook(token);
 
 	while(steem < desired_quantity && ++index < sell_orders.length) {
 		let order = sell_orders[index];
 		let qty = Math.min(desired_quantity - steem, parseFloat(order.quantity) * parseFloat(order.price));
 		steem += qty;
-		dec += qty / parseFloat(order.price);
+		token_amount += qty / parseFloat(order.price);
 	}
 
-	return { dec: +dec.toFixed(3), steem: +steem.toFixed(3) };
+	let ret_val = { steem: +steem.toFixed(3) };
+	ret_val[token] = +token_amount.toFixed(3);
+
+	return ret_val;
 }
 
 async function getDecBalance() {
@@ -183,8 +191,8 @@ module.exports = {
 	timeout,
 	tryParse,
 	loadPrices,
-	convertDecSteem,
-	convertSteemDec,
+	convertToSteem,
+	convertFromSteem,
 	getCurrency,
 	getDecBalance,
 	checkSETransaction,
