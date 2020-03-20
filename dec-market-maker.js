@@ -43,7 +43,7 @@ app.get('/conversion_rate', async (req, res) => {
 	}
 
 	if(steem) {
-		dec = (await utils.convertFromSteem('DEC', steem)).dec;
+		dec = (await utils.convertFromSteem('DEC', steem)).DEC;
 		res.json({ steem: steem, dec: +(dec * (1 - config.fee_pct / 10000)).toFixed(3) });
 		return;
 	}
@@ -141,7 +141,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 				await steem_interface.transfer(op[1].from, `${(amount - conversion.steem).toFixed(3)} STEEM`, `Not enough DEC available for purchase. Refunding remaining STEEM.`);
 			}
 
-			let dec_amount_net_fee = +(conversion.dec * (1 - config.fee_pct / 10000)).toFixed(3);
+			let dec_amount_net_fee = +(conversion.DEC * (1 - config.fee_pct / 10000)).toFixed(3);
 
 			let dec_balance = await utils.getDecBalance();
 
