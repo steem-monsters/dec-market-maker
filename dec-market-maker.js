@@ -63,15 +63,17 @@ async function getNextBlock() {
 		return;
 	}
 
+	let head_block = result.head_block_number - (config.blocks_behind_head || 0);
+
 	if(last_block == 0)
-		last_block = result.head_block_number - 1;
+		last_block = head_block - 1;
 
 	// We are 20+ blocks behind!
-	if(result.head_block_number >= last_block + 20)
-		utils.log('Steem Monsters node is ' + (result.head_block_number - last_block) + ' blocks behind!', 1, 'Red');
+	if(head_block >= last_block + 20)
+		utils.log('Steem Monsters node is ' + (head_block - last_block) + ' blocks behind!', 1, 'Red');
 
 	// If we have a new block, process it
-	while(result.head_block_number > last_block)
+	while(head_block > last_block)
 		await processBlock(last_block + 1);
 
 	// Attempt to load the next block after a 1 second delay (or faster if we're behind and need to catch up)
