@@ -1,9 +1,10 @@
 const fs = require("fs");
 const utils = require('./utils');
 const config = require('./config');
-var steem_interface = require('./steem-interface');
 var express = require('express');
 var app = express();
+const interface = require('@splinterlands/hive-interface');
+const hive = new interface.Hive();
 
 let last_block = 0;
 
@@ -34,29 +35,29 @@ app.use(function(req, res, next) {
 app.listen(config.api_port, () => utils.log('API running on port: ' + config.api_port));
 
 app.get('/conversion_rate', async (req, res) => {
-	let steem = parseFloat(req.query.steem);
+	let hive = parseFloat(req.query.hive);
 	let dec = parseFloat(req.query.dec);
 
-	if((!steem || isNaN(steem)) && (!dec || isNaN(dec))) {
-		res.json({ error: 'Must specify a valid STEEM or DEC amount to convert.' });
+	if((!hive || isNaN(hive)) && (!dec || isNaN(dec))) {
+		res.json({ error: 'Must specify a valid HIVE or DEC amount to convert.' });
 		return;
 	}
 
-	if(steem) {
-		dec = (await utils.convertFromSteem('DEC', steem)).DEC;
-		res.json({ steem: steem, dec: +(dec * (1 - config.fee_pct / 10000)).toFixed(3) });
+	if(hive) {
+		dec = (await utils.convertFromHive('DEC', hive)).DEC;
+		res.json({ hive: hive, dec: +(dec * (1 - config.fee_pct / 10000)).toFixed(3) });
 		return;
 	}
 
 	if(dec) {
-		steem = (await utils.convertToSteem('DEC', dec)).steem;
-		res.json({ steem: +(steem * (1 + config.fee_pct / 10000)).toFixed(3), dec: dec });
+		hive = (await utils.convertToHive('DEC', dec)).hive;
+		res.json({ hive: +(hive * (1 + config.fee_pct / 10000)).toFixed(3), dec: dec });
 		return;
 	}
 });
 
 async function getNextBlock() {
-	var result = await steem_interface.database('get_dynamic_global_properties');
+	var result = await hive.api('get_dynamic_global_properties');
 
 	if(!result) {
 		setTimeout(getNextBlock, 1000);
@@ -70,7 +71,7 @@ async function getNextBlock() {
 
 	// We are 20+ blocks behind!
 	if(head_block >= last_block + 20)
-		utils.log('Steem Monsters node is ' + (head_block - last_block) + ' blocks behind!', 1, 'Red');
+		utils.log('Service is ' + (head_block - last_block) + ' blocks behind!', 1, 'Red');
 
 	// If we have a new block, process it
 	while(head_block > last_block)
@@ -81,7 +82,7 @@ async function getNextBlock() {
 }
 
 async function processBlock(block_num) {
-	var block = await steem_interface.database('get_block', [block_num]);
+	var block = await hive.api('get_block', [block_num]);
 
 	// Log every 1000th block loaded just for easy parsing of logs, or every block depending on logging level
 	utils.log('Processing block [' + block_num + ']...', block_num % 1000 == 0 ? 1 : 4);
@@ -133,14 +134,14 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			let amount = parseFloat(op[1].amount);
 			let currency = utils.getCurrency(op[1].amount);
 
-			if(currency == 'SBD')
+			if(currency == 'HBD')
 				return; // Optionally refund the payment here
 
-			let conversion = await utils.convertFromSteem('DEC', amount);
+			let conversion = await utils.convertFromHive('DEC', amount);
 
-			if(conversion.steem < amount) {
-				// Not enough DEC available for sale, refund remaining STEEM
-				await steem_interface.transfer(op[1].from, `${(amount - conversion.steem).toFixed(3)} STEEM`, `Not enough DEC available for purchase. Refunding remaining STEEM.`);
+			if(conversion.hive < amount) {
+				// Not enough DEC available for sale, refund remaining HIVE
+				await hive.transfer(config.account, op[1].from, `${(amount - conversion.hive).toFixed(3)} HIVE`, `Not enough DEC available for purchase. Refunding remaining HIVE.`, config.active_key);
 			}
 
 			let dec_amount_net_fee = +(conversion.DEC * (1 - config.fee_pct / 10000)).toFixed(3);
@@ -152,14 +153,14 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			if(dec_balance < dec_amount_net_fee) {
 				// Insufficient balance, refund payment
 				utils.log(`Insufficient DEC balance [${dec_balance}]!`, 1, 'Red');
-				await steem_interface.transfer(op[1].from, op[1].amount, `Insufficient DEC balance. Refunding payment.`);
+				await hive.transfer(config.account, op[1].from, op[1].amount, `Insufficient DEC balance. Refunding payment.`, config.active_key);
 				return;
 			}
 
 			// Transfer the DEC minus the conversion fee
-			steem_interface.queue_custom_json('sm_token_transfer', { to: to, qty: dec_amount_net_fee, token: 'DEC' });
+			hive.custom_json(`${config.prefix}token_transfer`, { to: to, qty: dec_amount_net_fee, token: 'DEC' }, config.account, config.active_key, true);
 
-			// Deposit STEEM to Steem Engine, buy DEC, and withdraw it back to the game
+			// Deposit HIVE to Hive Engine, buy DEC, and withdraw it back to the game
 			marketBuy(amount, dec_amount_net_fee);
 		} catch(err) {
 			console.log(err);
@@ -167,17 +168,19 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 	}
 }
 
-async function marketBuy(steem_amount, dec_amount) {
+async function marketBuy(amount, dec_amount) {
 	try {
-		// Deposit STEEM to Steem Engine
-		let deposit = await steem_interface.transfer(
-			config.ssc.steemp_account, 
-			`${steem_amount.toFixed(3)} STEEM`, 
-			`{"id":"${config.ssc.chain_id}","json":{"contractName":"steempegged","contractAction":"buy","contractPayload":{}}}`
+		// Deposit HIVE to Hive Engine
+		let deposit = await hive.transfer(
+			config.account,
+			config.ssc.deposit_account, 
+			`${amount.toFixed(3)} HIVE`, 
+			`{"id":"${config.ssc.chain_id}","json":{"contractName":"hivepegged","contractAction":"buy","contractPayload":{}}}`,
+			config.active_key
 		);
 
 		if(!deposit || !deposit.id) {
-			utils.log(`Deposit of [${steem_amount} STEEM] failed!`, 1, 'Red');
+			utils.log(`Deposit of [${amount} HIVE] failed!`, 1, 'Red');
 			return;
 		}
 
@@ -185,7 +188,7 @@ async function marketBuy(steem_amount, dec_amount) {
 		let deposit_result = await utils.checkSETransaction(deposit.id);
 
 		if(!deposit_result || !deposit_result.success) {
-			utils.log(`Deposit of [${steem_amount} STEEM] failed! Error: ${deposit_result.error}`, 1, 'Red');
+			utils.log(`Deposit of [${amount} HIVE] failed! Error: ${deposit_result.error}`, 1, 'Red');
 			return;
 		}
 
@@ -195,7 +198,7 @@ async function marketBuy(steem_amount, dec_amount) {
 		let purchase_price = (deposit_amount / dec_amount).toFixed(5);
 
 		// Place the market buy order
-		let market_buy = await steem_interface.queue_custom_json(config.ssc.chain_id, {
+		let market_buy = await hive.custom_json(config.ssc.chain_id, {
 			"contractName":"market",
 			"contractAction":"buy",
 			"contractPayload": {
@@ -203,7 +206,7 @@ async function marketBuy(steem_amount, dec_amount) {
 				"quantity": dec_amount.toFixed(3),
 				"price": purchase_price
 			}
-		}, true);
+		}, config.account, config.active_key, true);
 
 		if(!market_buy || !market_buy.id) {
 			utils.log(`Market buy of [${dec_amount} DEC] failed!`, 1, 'Red');
@@ -223,7 +226,7 @@ async function marketBuy(steem_amount, dec_amount) {
 		let dec = market_logs.events.filter(e => e.data.to == config.account).reduce((t, v) => t + parseFloat(v.data.quantity), 0);
 
 		// Finally, transfer the DEC back to the game account
-		let dec_transfer = await steem_interface.queue_custom_json(config.ssc.chain_id, {
+		let dec_transfer = await hive.custom_json(config.ssc.chain_id, {
 			"contractName":"tokens",
 			"contractAction":"transfer",
 			"contractPayload": {
@@ -231,7 +234,7 @@ async function marketBuy(steem_amount, dec_amount) {
 				"quantity": dec.toFixed(3),
 				"to": config.sm_account
 			}
-		}, true);
+		}, config.account, config.active_key, true);
 
 		if(!dec_transfer || !dec_transfer.id) {
 			utils.log(`Transfer of [${dec} DEC] to @${config.sm_account} failed!`, 1, 'Red');

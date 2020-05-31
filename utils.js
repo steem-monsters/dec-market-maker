@@ -3,7 +3,7 @@ let request = require('request-promise-native');
 const SSC = require('sscjs');
 const ssc = new SSC(config.ssc.rpc_url);
 
-let steem_price = sbd_price = dec_price = 0;
+let hive_price = hbd_price = dec_price = 0;
 
 // Logging levels: 1 = Error, 2 = Warning, 3 = Info, 4 = Debug
 function log(msg, level, color) { 
@@ -50,21 +50,21 @@ function timeout(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function getCurrency(amount) { return amount.substr(amount.indexOf(' ') + 1); }
 
 async function loadPrices() {
-	await loadSteemPrice()
+	await loadHivePrice()
 	await loadDecPrice();
 	setTimeout(loadPrices, 10 * 60 * 1000);
 }
 
 async function loadDecPrice() {
-	let dec_data = await ssc.findOne('market', 'metrics', { symbol: 'DEC' }).catch(err => log(`Error loading DEC price from SE! Error: ${err}`, 1, 'Red'));
+	let dec_data = await ssc.findOne('market', 'metrics', { symbol: 'DEC' }).catch(err => log(`Error loading DEC price from Hive Engine! Error: ${err}`, 1, 'Red'));
 	dec_price = parseFloat(dec_data.lastPrice);
-	log(`Loaded DEC Price: ${dec_price.toFixed(5)} STEEM`);
+	log(`Loaded DEC Price: ${dec_price.toFixed(5)} HIVE`);
 }
 
-async function loadSteemPrice() {
+async function loadHivePrice() {
 	let btc_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=USD-BTC').catch(err => log(`Error loading BTC price from Bittrex! Error: ${err}`, 1, 'Red'));
-	let steem_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=BTC-STEEM').catch(err => log(`Error loading STEEM price from Bittrex! Error: ${err}`, 1, 'Red'));
-	let sbd_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=BTC-SBD').catch(err => log(`Error loading SBD price from Bittrex! Error: ${err}`, 1, 'Red'));
+	let hive_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=BTC-HIVE').catch(err => log(`Error loading HIVE price from Bittrex! Error: ${err}`, 1, 'Red'));
+	let hbd_data = await request('https://bittrex.com/api/v1.1/public/getticker?market=BTC-HBD').catch(err => log(`Error loading HBD price from Bittrex! Error: ${err}`, 1, 'Red'));
 
 	btc_data = tryParse(btc_data);
 
@@ -74,22 +74,22 @@ async function loadSteemPrice() {
 	}
 
 	btc_price = btc_data.result.Bid;
-	steem_data = tryParse(steem_data);
+	hive_data = tryParse(hive_data);
 	
-	if(!steem_data)
-		log('Error parsing STEEM price from Bittrex!', 1, 'Red');
+	if(!hive_data)
+		log('Error parsing HIVE price from Bittrex!', 1, 'Red');
 	else {
-		steem_price = parseFloat(btc_price) * parseFloat(steem_data.result.Bid);
-		log(`Loaded STEEM Price: $${steem_price.toFixed(5)}`);
+		hive_price = parseFloat(btc_price) * parseFloat(hive_data.result.Bid);
+		log(`Loaded HIVE Price: $${hive_price.toFixed(5)}`);
 	}
 
-	sbd_data = tryParse(sbd_data);
+	hbd_data = tryParse(hbd_data);
 
-	if(!sbd_data)
-		log('Error parsing SBD price from Bittrex!', 1, 'Red');
+	if(!hbd_data)
+		log('Error parsing HBD price from Bittrex!', 1, 'Red');
 	else {
-		sbd_price = parseFloat(btc_price) * parseFloat(sbd_data.result.Bid);
-		log(`Loaded SBD Price: $${sbd_price.toFixed(5)}`);
+		hbd_price = parseFloat(btc_price) * parseFloat(hbd_data.result.Bid);
+		log(`Loaded HBD Price: $${hbd_price.toFixed(5)}`);
 	}
 }
 
@@ -105,35 +105,35 @@ async function getSellBook(token) {
 	return sell_book.orders;
 }
 
-async function convertToSteem(token, desired_quantity) {
-	let token_amount = 0, steem = 0, index = -1;
+async function convertToHive(token, desired_quantity) {
+	let token_amount = 0, hive = 0, index = -1;
 	let sell_orders = await getSellBook(token);
 
 	while(token_amount < desired_quantity && ++index < sell_orders.length) {
 		let order = sell_orders[index];
 		let qty = Math.min(desired_quantity - token_amount, parseFloat(order.quantity));
-		steem += qty * parseFloat(order.price);
+		hive += qty * parseFloat(order.price);
 		token_amount += qty;
 	}
 
-	let ret_val = { steem: +steem.toFixed(3) };
+	let ret_val = { hive: +hive.toFixed(3) };
 	ret_val[token] = +token_amount.toFixed(3);
 
 	return ret_val;
 }
 
-async function convertFromSteem(token, desired_quantity) {
-	let token_amount = 0, steem = 0, index = -1;
+async function convertFromHive(token, desired_quantity) {
+	let token_amount = 0, hive = 0, index = -1;
 	let sell_orders = await getSellBook(token);
 
-	while(steem < desired_quantity && ++index < sell_orders.length) {
+	while(hive < desired_quantity && ++index < sell_orders.length) {
 		let order = sell_orders[index];
-		let qty = Math.min(desired_quantity - steem, parseFloat(order.quantity) * parseFloat(order.price));
-		steem += qty;
+		let qty = Math.min(desired_quantity - hive, parseFloat(order.quantity) * parseFloat(order.price));
+		hive += qty;
 		token_amount += qty / parseFloat(order.price);
 	}
 
-	let ret_val = { steem: +steem.toFixed(3) };
+	let ret_val = { hive: +hive.toFixed(3) };
 	ret_val[token] = +token_amount.toFixed(3);
 
 	return ret_val;
@@ -191,13 +191,13 @@ module.exports = {
 	timeout,
 	tryParse,
 	loadPrices,
-	convertToSteem,
-	convertFromSteem,
+	convertToHive,
+	convertFromHive,
 	getCurrency,
 	getDecBalance,
 	checkSETransaction,
 	getSETokenBalance,
 	decPrice: () => dec_price,
-	steemPrice: () => steem_price,
-	sbdPrice: () => sbd_price
+	hivePrice: () => hive_price,
+	hbdPrice: () => hbd_price
 }

@@ -9,6 +9,7 @@
   "author": "@yabapmatt",
   "license": "MIT",
   "dependencies": {
+    "@splinterlands/hive-interface": "^2.1.0",
     "dsteem": "^0.11.2",
     "express": "^4.17.1",
     "request": "^2.88.0",
