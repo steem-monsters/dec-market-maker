@@ -56,9 +56,11 @@ async function loadPrices() {
 }
 
 async function loadDecPrice() {
-	let dec_data = await ssc.findOne('market', 'metrics', { symbol: 'DEC' }).catch(err => log(`Error loading DEC price from Hive Engine! Error: ${err}`, 1, 'Red'));
-	dec_price = parseFloat(dec_data.lastPrice);
-	log(`Loaded DEC Price: ${dec_price.toFixed(5)} HIVE`);
+	try {
+		let dec_data = await ssc.findOne('market', 'metrics', { symbol: 'DEC' });
+		dec_price = parseFloat(dec_data.lastPrice);
+		log(`Loaded DEC Price: ${dec_price.toFixed(5)} HIVE`);
+	} catch (err) { log(`Error loading DEC price from Hive Engine! Error: ${err}`, 1, 'Red'); }
 }
 
 async function loadHivePrice() {
