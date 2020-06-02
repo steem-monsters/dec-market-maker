@@ -4,7 +4,7 @@ const config = require('./config');
 var express = require('express');
 var app = express();
 const interface = require('@splinterlands/hive-interface');
-const hive = new interface.Hive();
+const hive = new interface.Hive({ rpc_nodes: config.rpc_nodes });
 
 let last_block = 0;
 
@@ -57,25 +57,28 @@ app.get('/conversion_rate', async (req, res) => {
 });
 
 async function getNextBlock() {
-	var result = await hive.api('get_dynamic_global_properties');
+	try {
+		var result = await hive.api('get_dynamic_global_properties');
 
-	if(!result) {
-		setTimeout(getNextBlock, 1000);
-		return;
-	}
+		if(!result) {
+			setTimeout(getNextBlock, 1000);
+			return;
+		}
 
-	let head_block = result.head_block_number - (config.blocks_behind_head || 0);
+		let head_block = result.head_block_number - (config.blocks_behind_head || 0);
 
-	if(last_block == 0)
-		last_block = head_block - 1;
+		if(last_block == 0)
+			last_block = head_block - 1;
 
-	// We are 20+ blocks behind!
-	if(head_block >= last_block + 20)
-		utils.log('Service is ' + (head_block - last_block) + ' blocks behind!', 1, 'Red');
+		// We are 20+ blocks behind!
+		if(head_block >= last_block + 20)
+			utils.log('Service is ' + (head_block - last_block) + ' blocks behind!', 1, 'Red');
 
-	// If we have a new block, process it
-	while(head_block > last_block)
-		await processBlock(last_block + 1);
+		// If we have a new block, process it
+		while(head_block > last_block)
+			await processBlock(last_block + 1);
+
+	} catch(err) { utils.log(`Error getting next block: ${err}`, 1, 'Red'); }
 
 	// Attempt to load the next block after a 1 second delay (or faster if we're behind and need to catch up)
 	setTimeout(getNextBlock, 1000);
