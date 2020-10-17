@@ -9,12 +9,10 @@
   "author": "@yabapmatt",
   "license": "MIT",
   "dependencies": {
-    "@splinterlands/hive-interface": "^2.1.0",
-    "dsteem": "^0.11.2",
+    "@splinterlands/hive-interface": "^2.1.3",
     "express": "^4.17.1",
     "request": "^2.88.0",
     "request-promise-native": "^1.0.7",
-    "sscjs": "0.0.7",
-    "steem": "^0.7.5"
+    "sscjs": "0.0.7"
   }
 }

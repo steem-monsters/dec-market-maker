@@ -1,7 +1,8 @@
 {
 	"logging_level": 3,
-	"rpc_nodes": ["https://anyx.io", "https://api.hive.blog", "https://hived.splinterlands.com"],
-	"rpc_error_limit": 3,
+	"rpc_nodes": ["https://anyx.io", "https://api.hive.blog", "https://hived.splinterlands.com", "https://api.openhive.network"],
+  "rpc_error_limit": 3,
+  "api_port": 5012,
 
 	"prefix": "dev-sm_",
 	"account": "account_name",
@@ -10,7 +11,8 @@
 
 	"fee_pct": 500,
 	"sm_api_url": "https://steemmonsters.com",
-
+  "sm_account": "cryptomonsters",
+  
 	"ssc": {
 		"rpc_url": "https://api.hive-engine.com/rpc",
 		"chain_id": "ssc-mainnet-hive",
