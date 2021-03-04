@@ -57,8 +57,7 @@ async function loadPrices() {
 
 async function loadDecPrice() {
 	try {
-		let dec_data = await ssc.findOne('market', 'metrics', { symbol: 'DEC' });
-		dec_price = parseFloat(dec_data.lastPrice);
+		dec_price = (await convertToHive('DEC', 1)).hive;
 		log(`Loaded DEC Price: ${dec_price.toFixed(5)} HIVE`);
 	} catch (err) { log(`Error loading DEC price from Hive Engine! Error: ${err}`, 1, 'Red'); }
 }
@@ -107,38 +106,41 @@ async function getSellBook(token) {
 	return sell_book.orders;
 }
 
-async function convertToHive(token, desired_quantity) {
-	let token_amount = 0, hive = 0, index = -1;
-	let sell_orders = await getSellBook(token);
+async function convertToHive(token, token_amount) {
+	let pool = await getPoolInfo(token);
+	let hive_amount = parseFloat(token_amount) * parseFloat(pool.baseQuantity) / (parseFloat(pool.quoteQuantity) + parseFloat(token_amount));
 
-	while(token_amount < desired_quantity && ++index < sell_orders.length) {
-		let order = sell_orders[index];
-		let qty = Math.min(desired_quantity - token_amount, parseFloat(order.quantity));
-		hive += qty * parseFloat(order.price);
-		token_amount += qty;
-	}
-
-	let ret_val = { hive: +hive.toFixed(3) };
+	let ret_val = { hive: +hive_amount.toFixed(5) };
 	ret_val[token] = +token_amount.toFixed(3);
 
 	return ret_val;
 }
 
-async function convertFromHive(token, desired_quantity) {
-	let token_amount = 0, hive = 0, index = -1;
-	let sell_orders = await getSellBook(token);
+async function convertFromHive(token, hive_amount) {
+	let pool = await getPoolInfo(token);
+	let token_amount = parseFloat(hive_amount) * parseFloat(pool.quoteQuantity) / (parseFloat(pool.baseQuantity) + parseFloat(hive_amount));
 
-	while(hive < desired_quantity && ++index < sell_orders.length) {
-		let order = sell_orders[index];
-		let qty = Math.min(desired_quantity - hive, parseFloat(order.quantity) * parseFloat(order.price));
-		hive += qty;
-		token_amount += qty / parseFloat(order.price);
-	}
-
-	let ret_val = { hive: +hive.toFixed(3) };
+	let ret_val = { hive: +hive_amount.toFixed(3) };
 	ret_val[token] = +token_amount.toFixed(3);
 
 	return ret_val;
+}
+
+async function getPoolInfo(token) {
+	return await ssc.findOne('marketpools', 'pools', { tokenPair: `SWAP.HIVE:${token}` });
+
+	/*
+		basePrice: "439.59798574" - DEC / HIVE
+		baseQuantity: "49089.44612205" - HIVE in Pool
+		baseVolume: "35474.77449567"
+		creator: "sm-usd"
+		precision: 8
+		quotePrice: "0.00227480" - HIVE / DEC
+		quoteQuantity: "21579621.63656238" - DEC in Pool
+		quoteVolume: "15285617.26143738"
+		tokenPair: "SWAP.HIVE:DEC"
+		totalShares: "1029238.39479294015642316074"
+	*/
 }
 
 async function getDecBalance() {

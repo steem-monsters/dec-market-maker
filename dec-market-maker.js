@@ -164,10 +164,92 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			hive.custom_json(`${config.prefix}token_transfer`, { to: to, qty: dec_amount_net_fee, token: 'DEC' }, config.account, config.active_key, true);
 
 			// Deposit HIVE to Hive Engine, buy DEC, and withdraw it back to the game
-			marketBuy(amount, dec_amount_net_fee);
+			poolBuy(amount);
 		} catch(err) {
 			console.log(err);
 		}
+	}
+}
+
+async function poolBuy(amount) {
+	try {
+		// Deposit HIVE to Hive Engine
+		let deposit = await hive.transfer(
+			config.account,
+			config.ssc.deposit_account, 
+			`${amount.toFixed(3)} HIVE`, 
+			`{"id":"${config.ssc.chain_id}","json":{"contractName":"hivepegged","contractAction":"buy","contractPayload":{}}}`,
+			config.active_key
+		);
+
+		if(!deposit || !deposit.id) {
+			utils.log(`Deposit of [${amount} HIVE] failed!`, 1, 'Red');
+			return;
+		}
+
+		// Make sure the transaction went through
+		let deposit_result = await utils.checkSETransaction(deposit.id);
+
+		if(!deposit_result || !deposit_result.success) {
+			utils.log(`Deposit of [${amount} HIVE] failed! Error: ${deposit_result.error}`, 1, 'Red');
+			return;
+		}
+
+		// Do the swap
+		let pool_swap = await hive.custom_json(config.ssc.chain_id, {
+			"contractName": "marketpools",
+			"contractAction": "swapTokens",
+			"contractPayload": {
+				"tokenPair": "SWAP.HIVE:DEC",
+				"tokenSymbol": "SWAP.HIVE",
+				"tokenAmount": amount.toFixed(3),
+				"tradeType": "exactInput",
+				"maxSlippage": "0.5"
+			}
+		}, config.account, config.active_key, true);
+
+		if(!pool_swap || !pool_swap.id) {
+			utils.log(`Diesel pool swap of [${amount} HIVE] failed!`, 1, 'Red');
+			return;
+		}
+
+		// Make sure the transaction went through
+		let swap_result = await utils.checkSETransaction(pool_swap.id);
+
+		if(!swap_result || !swap_result.success) {
+			utils.log(`Diesel pool swap of [${amount} HIVE] failed! Error: ${swap_result.error}`, 1, 'Red');
+			return;
+		}
+
+		// Find the amount of DEC received from the market
+		let market_logs = utils.tryParse(swap_result.logs);
+		let dec = market_logs.events.filter(e => e.data.to == config.account).reduce((t, v) => t + parseFloat(v.data.quantity), 0);
+
+		// Finally, transfer the DEC back to the game account
+		let dec_transfer = await hive.custom_json(config.ssc.chain_id, {
+			"contractName":"tokens",
+			"contractAction":"transfer",
+			"contractPayload": {
+				"symbol": "DEC",
+				"quantity": dec.toFixed(3),
+				"to": config.sm_account
+			}
+		}, config.account, config.active_key, true);
+
+		if(!dec_transfer || !dec_transfer.id) {
+			utils.log(`Transfer of [${dec} DEC] to @${config.sm_account} failed!`, 1, 'Red');
+			return;
+		}
+		
+		// Make sure the transaction went through
+		let dec_transfer_result = await utils.checkSETransaction(dec_transfer.id);
+
+		if(!dec_transfer_result || !dec_transfer_result.success) {
+			utils.log(`Transfer of [${dec_amount} DEC] to @${config.sm_account} failed! Error: ${dec_transfer_result.error}`, 1, 'Red');
+			return;
+		}
+	} catch(err) {
+		console.log(err);
 	}
 }
 
