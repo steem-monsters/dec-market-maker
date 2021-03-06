@@ -204,7 +204,7 @@ async function poolBuy(amount) {
 				"tokenSymbol": "SWAP.HIVE",
 				"tokenAmount": amount.toFixed(3),
 				"tradeType": "exactInput",
-				"maxSlippage": "0.5"
+				"maxSlippage": "10"
 			}
 		}, config.account, config.active_key, true);
 
