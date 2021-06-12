@@ -144,7 +144,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 
 			if(conversion.hive < amount) {
 				// Not enough DEC available for sale, refund remaining HIVE
-				await hive.transfer(config.account, op[1].from, `${(amount - conversion.hive).toFixed(3)} HIVE`, `Not enough DEC available for purchase. Refunding remaining HIVE.`, config.active_key);
+				await hive.transfer(config.account, to, `${(amount - conversion.hive).toFixed(3)} HIVE`, `Not enough DEC available for purchase. Refunding remaining HIVE.`, config.active_key);
 			}
 
 			let dec_amount_net_fee = +(conversion.DEC * (1 - config.fee_pct / 10000)).toFixed(3);
@@ -156,7 +156,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			if(dec_balance < dec_amount_net_fee) {
 				// Insufficient balance, refund payment
 				utils.log(`Insufficient DEC balance [${dec_balance}]!`, 1, 'Red');
-				await hive.transfer(config.account, op[1].from, op[1].amount, `Insufficient DEC balance. Refunding payment.`, config.active_key);
+				await hive.transfer(config.account, to, op[1].amount, `Insufficient DEC balance. Refunding payment.`, config.active_key);
 				return;
 			}
 
