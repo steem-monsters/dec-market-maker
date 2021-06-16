@@ -195,6 +195,12 @@ async function poolBuy(amount) {
 			return;
 		}
 
+		const wait_time = Math.random() * ((config.max_time || 60) * 1000) + ((config.min_time || 5) * 1000);
+		utils.log(`Waiting ${(wait_time / 1000).toFixed(2)} seconds before continuing...`)
+
+		// Wait a random amount of time before buying from market to reduce front-running
+		await utils.timeout(wait_time);
+
 		// Do the swap
 		let pool_swap = await hive.custom_json(config.ssc.chain_id, {
 			"contractName": "marketpools",

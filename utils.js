@@ -14,7 +14,7 @@ function log(msg, level, color) {
 		msg = log_colors[color] + msg + log_colors.Reset;
 
   if(level <= config.logging_level)
-    console.log(new Date().toString() + ' - ' + msg); 
+    console.log(new Date().toLocaleString() + ' - ' + msg); 
 }
 
 var log_colors = {
