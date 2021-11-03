@@ -5,12 +5,23 @@ var express = require('express');
 var app = express();
 const interface = require('@splinterlands/hive-interface');
 const hive = new interface.Hive({ rpc_nodes: config.rpc_nodes });
+const { secrets, secretsConfigSchema } = require('./secrets-config');
+const { SecretsLoader, secretsConfig } = require('@steem-monsters/sl-secrets-loader/secrets-loader');
 
 let last_block = 0;
 
 start();
 
 async function start() {
+	try{
+		// Need to ensure that async config is loaded before anything else initializes
+		const sl = new SecretsLoader(secretsConfigSchema);
+		await sl.loadConfig(secrets);
+	}catch(err){
+		utils.log(`Error loading secrets: ${err}`);
+		process.exit(1);
+	}
+
 	// Check if state has been saved to disk, in which case load it
 	if (fs.existsSync('state.json')) {
 		var state = JSON.parse(fs.readFileSync("state.json"));
@@ -144,7 +155,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 
 			if(conversion.hive < amount) {
 				// Not enough DEC available for sale, refund remaining HIVE
-				await hive.transfer(config.account, to, `${(amount - conversion.hive).toFixed(3)} HIVE`, `Not enough DEC available for purchase. Refunding remaining HIVE.`, config.active_key);
+				await hive.transfer(config.account, to, `${(amount - conversion.hive).toFixed(3)} HIVE`, `Not enough DEC available for purchase. Refunding remaining HIVE.`, secretsConfig.active_key);
 			}
 
 			let dec_amount_net_fee = +(conversion.DEC * (1 - config.fee_pct / 10000)).toFixed(3);
@@ -156,12 +167,12 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			if(dec_balance < dec_amount_net_fee) {
 				// Insufficient balance, refund payment
 				utils.log(`Insufficient DEC balance [${dec_balance}]!`, 1, 'Red');
-				await hive.transfer(config.account, to, op[1].amount, `Insufficient DEC balance. Refunding payment.`, config.active_key);
+				await hive.transfer(config.account, to, op[1].amount, `Insufficient DEC balance. Refunding payment.`, secretsConfig.active_key);
 				return;
 			}
 
 			// Transfer the DEC minus the conversion fee
-			hive.custom_json(`${config.prefix}token_transfer`, { to: to, qty: dec_amount_net_fee, token: 'DEC' }, config.account, config.active_key, true);
+			hive.custom_json(`${config.prefix}token_transfer`, { to: to, qty: dec_amount_net_fee, token: 'DEC' }, config.account, secretsConfig.active_key, true);
 
 			// Deposit HIVE to Hive Engine, buy DEC, and withdraw it back to the game
 			poolBuy(amount);
@@ -179,7 +190,7 @@ async function poolBuy(amount) {
 			config.ssc.deposit_account, 
 			`${amount.toFixed(3)} HIVE`, 
 			`{"id":"${config.ssc.chain_id}","json":{"contractName":"hivepegged","contractAction":"buy","contractPayload":{}}}`,
-			config.active_key
+			secretsConfig.active_key
 		);
 
 		if(!deposit || !deposit.id) {
@@ -212,7 +223,7 @@ async function poolBuy(amount) {
 				"tradeType": "exactInput",
 				"maxSlippage": "10"
 			}
-		}, config.account, config.active_key, true);
+		}, config.account, secretsConfig.active_key, true);
 
 		if(!pool_swap || !pool_swap.id) {
 			utils.log(`Diesel pool swap of [${amount} HIVE] failed!`, 1, 'Red');
@@ -240,7 +251,7 @@ async function poolBuy(amount) {
 				"quantity": dec.toFixed(3),
 				"to": config.sm_account
 			}
-		}, config.account, config.active_key, true);
+		}, config.account, secretsConfig.active_key, true);
 
 		if(!dec_transfer || !dec_transfer.id) {
 			utils.log(`Transfer of [${dec} DEC] to @${config.sm_account} failed!`, 1, 'Red');
@@ -267,7 +278,7 @@ async function marketBuy(amount, dec_amount) {
 			config.ssc.deposit_account, 
 			`${amount.toFixed(3)} HIVE`, 
 			`{"id":"${config.ssc.chain_id}","json":{"contractName":"hivepegged","contractAction":"buy","contractPayload":{}}}`,
-			config.active_key
+			secretsConfig.active_key
 		);
 
 		if(!deposit || !deposit.id) {
@@ -297,7 +308,7 @@ async function marketBuy(amount, dec_amount) {
 				"quantity": dec_amount.toFixed(3),
 				"price": purchase_price
 			}
-		}, config.account, config.active_key, true);
+		}, config.account, secretsConfig.active_key, true);
 
 		if(!market_buy || !market_buy.id) {
 			utils.log(`Market buy of [${dec_amount} DEC] failed!`, 1, 'Red');
@@ -325,7 +336,7 @@ async function marketBuy(amount, dec_amount) {
 				"quantity": dec.toFixed(3),
 				"to": config.sm_account
 			}
-		}, config.account, config.active_key, true);
+		}, config.account, secretsConfig.active_key, true);
 
 		if(!dec_transfer || !dec_transfer.id) {
 			utils.log(`Transfer of [${dec} DEC] to @${config.sm_account} failed!`, 1, 'Red');
