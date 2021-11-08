@@ -1,21 +1,30 @@
 {
-	"logging_level": 3,
-	"rpc_nodes": ["https://anyx.io", "https://api.hive.blog", "https://hived.splinterlands.com", "https://api.openhive.network"],
+  "logging_level": 3,
+  "rpc_nodes": [
+    "https://anyx.io",
+    "https://api.hive.blog",
+    "https://hived.splinterlands.com"
+  ],
   "rpc_error_limit": 3,
-  "api_port": 5012,
+  "api_port": 5000,
+  "blocks_behind_head": 2,
 
-	"prefix": "dev-sm_",
-	"account": "account_name",
-	"posting_key": "",
-	"active_key": "",
+  "prefix": "dev-sm_",
+  "account": "token-converter",
+  "posting_key": "***",
+  "active_key": "***",
 
-	"fee_pct": 500,
-	"sm_api_url": "https://steemmonsters.com",
-  "sm_account": "cryptomonsters",
-  
-	"ssc": {
-		"rpc_url": "https://api.hive-engine.com/rpc",
-		"chain_id": "ssc-mainnet-hive",
-		"deposit_account": "honey-swap"
-	}
+  "fee_pct": 500,
+  "sm_api_url": "https://api2.splinterlands.com",
+  "sm_account": "steemmonsters",
+  "supported_tokens": ["DEC", "SPS"],
+
+  "ssc": {
+    "rpc_url": "https://api.hive-engine.com/rpc",
+    "chain_id": "ssc-mainnet-hive",
+    "deposit_account": "honey-swap"
+  },
+
+  "min_time": 10,
+  "max_time": 60
 }

@@ -21,7 +21,6 @@ async function start() {
 		utils.log('Restored saved state: ' + JSON.stringify(state));
 	}
 
-	await utils.loadPrices();
 	getNextBlock();
 }
 
@@ -35,24 +34,31 @@ app.use(function(req, res, next) {
 app.listen(config.api_port, () => utils.log('API running on port: ' + config.api_port));
 
 app.get('/conversion_rate', async (req, res) => {
-	let hive = parseFloat(req.query.hive);
-	let dec = parseFloat(req.query.dec);
+	const from_token = (req.query.from_token || '').toUpperCase();
+	const to_token = (req.query.to_token || '').toUpperCase();
 
-	if((!hive || isNaN(hive)) && (!dec || isNaN(dec))) {
-		res.json({ error: 'Must specify a valid HIVE or DEC amount to convert.' });
-		return;
-	}
+	if(from_token !== 'HIVE' && !config.supported_tokens.includes(from_token))
+		return res.json({ error: 'Missing or invalid "from_token" specified.' });
 
-	if(hive) {
-		dec = (await utils.convertFromHive('DEC', hive)).DEC;
-		res.json({ hive: hive, dec: +(dec * (1 - config.fee_pct / 10000)).toFixed(3) });
-		return;
-	}
+	if(to_token !== 'HIVE' && !config.supported_tokens.includes(to_token))
+		return res.json({ error: 'Missing or invalid "to_token" specified.' });
 
-	if(dec) {
-		hive = (await utils.convertToHive('DEC', dec)).hive;
-		res.json({ hive: +(hive * (1 + config.fee_pct / 10000)).toFixed(3), dec: dec });
-		return;
+	if(from_token === to_token || (from_token !== 'HIVE' && to_token !== 'HIVE'))
+		return res.json({ error: 'Must convert a token to HIVE or HIVE to another token.' });
+
+	const amount = parseFloat(req.query.amount);
+
+	if(!amount || isNaN(amount))
+		return res.json({ error: 'Missing or invalid "amount" property.' });
+
+	if(from_token === 'HIVE') {
+		const ret_val = (await utils.convertFromHive(to_token, amount));
+		ret_val[to_token] = +(ret_val[to_token] * (1 - config.fee_pct / 10000)).toFixed(3);
+		return res.json(ret_val);
+	} else {
+		const ret_val = (await utils.convertToHive(from_token, amount));
+		ret_val['HIVE'] = +(ret_val['HIVE'] * (1 - config.fee_pct / 10000)).toFixed(3);
+		return res.json(ret_val);
 	}
 });
 
@@ -130,7 +136,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 				data = utils.tryParse(new Buffer(op[1].memo, 'base64').toString('ascii'))
 			}
 
-			if(!data || data.method != 'buy' || data.symbol != 'DEC')
+			if(!data || data.method != 'buy' || !config.supported_tokens.includes(data.symbol))
 				return;	// Optionally refund the payment here
 
 			let to = data.to ? data.to : (data.id ? data.id : op[1].from);
@@ -140,38 +146,37 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 			if(currency == 'HBD')
 				return; // Optionally refund the payment here
 
-			let conversion = await utils.convertFromHive('DEC', amount);
+			let conversion = await utils.convertFromHive(data.symbol, amount);
 
-			if(conversion.hive < amount) {
+			if(conversion.HIVE < amount) {
 				// Not enough DEC available for sale, refund remaining HIVE
-				await hive.transfer(config.account, to, `${(amount - conversion.hive).toFixed(3)} HIVE`, `Not enough DEC available for purchase. Refunding remaining HIVE.`, config.active_key);
+				await hive.transfer(config.account, to, `${(amount - conversion.HIVE).toFixed(3)} HIVE`, `Not enough ${data.symbol} available for purchase. Refunding remaining HIVE.`, config.active_key);
 			}
 
-			let dec_amount_net_fee = +(conversion.DEC * (1 - config.fee_pct / 10000)).toFixed(3);
-
-			let dec_balance = await utils.getDecBalance();
+			let dec_amount_net_fee = +(conversion[data.symbol] * (1 - config.fee_pct / 10000)).toFixed(3);
+			let dec_balance = await utils.getInGameBalance(data.symbol);
 
 			utils.log(`DEC Balance: ${dec_balance}`);
 
 			if(dec_balance < dec_amount_net_fee) {
 				// Insufficient balance, refund payment
-				utils.log(`Insufficient DEC balance [${dec_balance}]!`, 1, 'Red');
-				await hive.transfer(config.account, to, op[1].amount, `Insufficient DEC balance. Refunding payment.`, config.active_key);
+				utils.log(`Insufficient ${data.symbol} balance [${dec_balance}]!`, 1, 'Red');
+				await hive.transfer(config.account, to, op[1].amount, `Insufficient ${data.symbol} balance. Refunding payment.`, config.active_key);
 				return;
 			}
 
-			// Transfer the DEC minus the conversion fee
-			hive.custom_json(`${config.prefix}token_transfer`, { to: to, qty: dec_amount_net_fee, token: 'DEC' }, config.account, config.active_key, true);
+			// Transfer the tokens minus the conversion fee
+			hive.custom_json(`${config.prefix}token_transfer`, { to: to, qty: dec_amount_net_fee, token: data.symbol }, config.account, config.active_key, true);
 
 			// Deposit HIVE to Hive Engine, buy DEC, and withdraw it back to the game
-			poolBuy(amount);
+			poolBuy(amount, data.symbol);
 		} catch(err) {
 			console.log(err);
 		}
 	}
 }
 
-async function poolBuy(amount) {
+async function poolBuy(amount, symbol) {
 	try {
 		// Deposit HIVE to Hive Engine
 		let deposit = await hive.transfer(
@@ -206,7 +211,7 @@ async function poolBuy(amount) {
 			"contractName": "marketpools",
 			"contractAction": "swapTokens",
 			"contractPayload": {
-				"tokenPair": "SWAP.HIVE:DEC",
+				"tokenPair": `SWAP.HIVE:${symbol}`,
 				"tokenSymbol": "SWAP.HIVE",
 				"tokenAmount": amount.toFixed(3),
 				"tradeType": "exactInput",
@@ -227,23 +232,23 @@ async function poolBuy(amount) {
 			return;
 		}
 
-		// Find the amount of DEC received from the market
+		// Find the amount of tokens received from the market
 		let market_logs = utils.tryParse(swap_result.logs);
 		let dec = market_logs.events.filter(e => e.data.to == config.account).reduce((t, v) => t + parseFloat(v.data.quantity), 0);
 
-		// Finally, transfer the DEC back to the game account
+		// Finally, transfer the tokens back to the game account
 		let dec_transfer = await hive.custom_json(config.ssc.chain_id, {
 			"contractName":"tokens",
 			"contractAction":"transfer",
 			"contractPayload": {
-				"symbol": "DEC",
+				"symbol": symbol,
 				"quantity": dec.toFixed(3),
 				"to": config.sm_account
 			}
 		}, config.account, config.active_key, true);
 
 		if(!dec_transfer || !dec_transfer.id) {
-			utils.log(`Transfer of [${dec} DEC] to @${config.sm_account} failed!`, 1, 'Red');
+			utils.log(`Transfer of [${dec} ${symbol}] to @${config.sm_account} failed!`, 1, 'Red');
 			return;
 		}
 		
@@ -251,7 +256,7 @@ async function poolBuy(amount) {
 		let dec_transfer_result = await utils.checkSETransaction(dec_transfer.id);
 
 		if(!dec_transfer_result || !dec_transfer_result.success) {
-			utils.log(`Transfer of [${dec_amount} DEC] to @${config.sm_account} failed! Error: ${dec_transfer_result.error}`, 1, 'Red');
+			utils.log(`Transfer of [${dec_amount} ${symbol}] to @${config.sm_account} failed! Error: ${dec_transfer_result.error}`, 1, 'Red');
 			return;
 		}
 	} catch(err) {
