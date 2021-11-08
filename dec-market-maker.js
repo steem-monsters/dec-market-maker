@@ -31,7 +31,9 @@ app.use(function(req, res, next) {
 	next();
 });
 
-app.listen(config.api_port, () => utils.log('API running on port: ' + config.api_port));
+if (config.api_port) {
+	app.listen(config.api_port, () => utils.log('API running on port: ' + config.api_port));
+}
 
 app.get('/conversion_rate', async (req, res) => {
 	const from_token = (req.query.from_token || '').toUpperCase();
@@ -256,7 +258,7 @@ async function poolBuy(amount, symbol) {
 		let dec_transfer_result = await utils.checkSETransaction(dec_transfer.id);
 
 		if(!dec_transfer_result || !dec_transfer_result.success) {
-			utils.log(`Transfer of [${dec_amount} ${symbol}] to @${config.sm_account} failed! Error: ${dec_transfer_result.error}`, 1, 'Red');
+			utils.log(`Transfer of [${dec} ${symbol}] to @${config.sm_account} failed! Error: ${dec_transfer_result.error}`, 1, 'Red');
 			return;
 		}
 	} catch(err) {
