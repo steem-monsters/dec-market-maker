@@ -6,8 +6,6 @@
 
 	"prefix": "dev-sm_",
 	"account": "account_name",
-	"posting_key": "",
-	"active_key": "",
 
 	"fee_pct": 500,
 	"sm_api_url": "https://steemmonsters.com",
