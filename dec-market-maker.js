@@ -178,7 +178,7 @@ async function processOp(op, block_num, block_id, prev_block_id, trx_id, block_t
 				return;
 			}
 
-			// Transfer the DEC minus the conversion fee
+			// Transfer the tokens minus the conversion fee
 			hive.custom_json(`${config.prefix}token_transfer`, { to: to, qty: dec_amount_net_fee, token: data.symbol }, config.account, secretsConfig.active_key, true);
 
 			// Deposit HIVE to Hive Engine, buy DEC, and withdraw it back to the game
