@@ -11,8 +11,6 @@
 
   "prefix": "dev-sm_",
   "account": "token-converter",
-  "posting_key": "***",
-  "active_key": "***",
 
   "fee_pct": 500,
   "sm_api_url": "https://api2.splinterlands.com",
